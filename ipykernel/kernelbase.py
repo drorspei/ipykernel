@@ -538,6 +538,8 @@ class Kernel(SingletonConfigurable):
 
     def start(self):
         """register dispatchers for streams"""
+        self.start2()
+
         self.io_loop = ioloop.IOLoop.current()
         self.msg_queue: Queue[t.Any] = Queue()
         self.io_loop.add_callback(self.dispatch_queue)
@@ -683,7 +685,38 @@ class Kernel(SingletonConfigurable):
         """
         return metadata
 
+    def start2(self):
+        io_loop2 = asyncio.new_event_loop()
+        msg_queue2 = Queue()
+
+        async def loop2():
+            while True:
+                a = await msg_queue2.get()
+                if a == "done":
+                    break
+                await self.execute_request2(*a)
+
+        from threading import Thread
+        io_thread = Thread(target=io_loop2.run_until_complete, args=(loop2(),))
+        io_thread.start()
+
+        self.io_loop2, self.msg_queue2, self.io_thread = io_loop2, msg_queue2, io_thread
+
     async def execute_request(self, stream, ident, parent):
+        async def nop():
+            pass
+        try:
+            if parent.get("content", {}).get("code") == "%bg":
+                io2, msg2 = self.io_loop2, self.msg_queue2
+                self.start2()
+                msg2.put("done")
+                asyncio.run_coroutine_threadsafe(nop(), io2)
+            self.msg_queue2.put((stream, ident, parent))
+            asyncio.run_coroutine_threadsafe(nop(), self.io_loop2)
+        except Exception as e:
+            self.log.error("Couldn't put message in msgqueue2")
+            
+    async def execute_request2(self, stream, ident, parent):
         """handle an execute_request"""
         try:
             content = parent["content"]
@@ -697,6 +730,10 @@ class Kernel(SingletonConfigurable):
             self.log.error("%s", parent)
             return
 
+        if code == "%bg":
+            # start new thread and send execution there
+            code = "# %bg"
+
         stop_on_error = content.get("stop_on_error", True)
 
         metadata = self.init_metadata(parent)
@@ -705,6 +742,7 @@ class Kernel(SingletonConfigurable):
         # start computing output
         if not silent:
             self.execution_count += 1
+            self.shell.execution_count += 1
             self._publish_execute_input(code, parent, self.execution_count)
 
         cell_id = (parent.get("metadata") or {}).get("cellId")
