@@ -401,7 +401,8 @@ class IPythonKernel(KernelBase):
 
                 coro_future = asyncio.ensure_future(coro)
 
-                with self._cancel_on_sigint(coro_future):
+                #with self._cancel_on_sigint(coro_future):
+                if 1:
                     res = None
                     try:
                         res = await coro_future
