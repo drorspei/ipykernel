@@ -397,6 +397,47 @@ def test_execute_stop_on_error():
     assert reply["content"]["status"] == "ok"
 
 
+def test_execute_no_async_lock_statuses():
+    """published statuses should have correct msg_id even if no async lock"""
+    flush_channels()
+
+    KC.execute(
+        code="""
+        import asyncio
+        from contextlib import nullcontext
+        ip = get_ipython()
+        lock = ip.parent._main_asyncio_lock
+        ip.parent._main_asyncio_lock = nullcontext()
+        try:
+            await asyncio.sleep(1)
+        finally:
+            ip.parent._main_asyncio_lock = lock
+    """
+    )
+    KC.execute(code='print("Hello")')
+    statuses = []
+    while len(statuses) < 4:
+        status = KC.get_iopub_msg(timeout=TIMEOUT)
+        if status["header"]["msg_type"] == "status":
+            statuses.append(status)
+    assert statuses[0]["parent_header"]["msg_id"] == statuses[3]["parent_header"]["msg_id"]
+    assert statuses[1]["parent_header"]["msg_id"] == statuses[2]["parent_header"]["msg_id"]
+
+
+def test_execute_correct_execution_count():
+    """execution_count in replies shouldn't be affected by the current user code
+
+    If the execution_count is computed after the user code runs then
+    do_execute is not re-enterable, making running cells concurrently
+    a bummer.
+    """
+    flush_channels()
+
+    KC.execute(code="get_ipython().execution_count = 10000000")
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    assert reply["content"]["execution_count"] < 10000000
+
+
 def test_non_execute_stop_on_error():
     """test that non-execute_request's are not aborted after an error"""
     flush_channels()

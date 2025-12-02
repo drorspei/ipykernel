@@ -385,6 +385,7 @@ class IPythonKernel(KernelBase):
         """Handle code execution."""
         shell = self.shell  # we'll need this a lot here
         assert shell is not None
+        execution_count = shell.execution_count
 
         self._forward_input(allow_stdin)
 
@@ -492,7 +493,7 @@ class IPythonKernel(KernelBase):
             reply_content["engine_info"] = e_info
 
         # Return the execution counter so clients can display prompts
-        reply_content["execution_count"] = shell.execution_count - 1
+        reply_content["execution_count"] = execution_count
 
         if "traceback" in reply_content:
             self.log.info(

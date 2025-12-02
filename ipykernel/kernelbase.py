@@ -491,7 +491,7 @@ class Kernel(SingletonConfigurable):
             sys.stdout.flush()
         if sys.stderr is not None:
             sys.stderr.flush()
-        self._publish_status_and_flush("idle", "shell", stream)
+        self._publish_status_and_flush("idle", "shell", stream, parent=msg)
 
     def pre_handler_hook(self):
         """Hook to execute before calling message handler"""
